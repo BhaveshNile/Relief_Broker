@@ -1,0 +1,160 @@
+# serverless.yml
+#
+# Reference Infrastructure-as-Code for deploying the real AWS version of
+# this system with the Serverless Framework (https://www.serverless.com/).
+# Not used by the local demo (server.js / worker_threads simulate all of
+# this on one machine) - this file exists so the project can be explained,
+# and later actually deployed, as genuine serverless infrastructure rather
+# than only as a local simulation.
+#
+# Deploy with: serverless deploy --stage prod --region ap-south-1
+# (requires an AWS account with credentials configured)
+
+service: relief-broker
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: ap-south-1
+  stage: ${opt:stage, 'dev'}
+  memorySize: 256
+  timeout: 10
+  environment:
+    LEDGER_TABLE: ${self:service}-${self:provider.stage}-ledger
+    CRITICAL_QUEUE_URL: !Ref CriticalQueue
+    STANDARD_QUEUE_URL: !Ref StandardQueue
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:PutItem
+        - dynamodb:GetItem
+        - dynamodb:UpdateItem
+        - dynamodb:Query
+      Resource:
+        - !GetAtt RequestLedgerTable.Arn
+        - !Sub '${RequestLedgerTable.Arn}/index/*'
+    - Effect: Allow
+      Action:
+        - sqs:SendMessage
+        - sqs:ReceiveMessage
+        - sqs:DeleteMessage
+        - sqs:GetQueueAttributes
+      Resource:
+        - !GetAtt CriticalQueue.Arn
+        - !GetAtt StandardQueue.Arn
+
+functions:
+  requestIntake:
+    handler: src/handlers/requestIntake.handler
+    events:
+      - httpApi:
+          path: /api/requests
+          method: post
+    reservedConcurrency: 50 # protects downstream during an extreme spike
+
+  requestProcessorCritical:
+    handler: src/handlers/requestProcessor.handler
+    events:
+      - sqs:
+          arn: !GetAtt CriticalQueue.Arn
+          batchSize: 1
+    reservedConcurrency: 100
+
+  requestProcessorStandard:
+    handler: src/handlers/requestProcessor.handler
+    events:
+      - sqs:
+          arn: !GetAtt StandardQueue.Arn
+          batchSize: 5
+    reservedConcurrency: 50
+
+  getRequest:
+    handler: src/handlers/getRequest.handler
+    events:
+      - httpApi:
+          path: /api/requests/{id}
+          method: get
+
+resources:
+  Resources:
+    RequestLedgerTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.LEDGER_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: requestId
+            AttributeType: S
+          - AttributeName: status
+            AttributeType: S
+          - AttributeName: createdAt
+            AttributeType: S
+        KeySchema:
+          - AttributeName: requestId
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: status-index
+            KeySchema:
+              - AttributeName: status
+                KeyType: HASH
+              - AttributeName: createdAt
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+        PointInTimeRecoverySpecification:
+          PointInTimeRecoveryEnabled: true
+
+    CriticalQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-${self:provider.stage}-critical
+        VisibilityTimeout: 15
+        RedrivePolicy:
+          deadLetterTargetArn: !GetAtt CriticalDLQ.Arn
+          maxReceiveCount: 3
+
+    CriticalDLQ:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-${self:provider.stage}-critical-dlq
+        MessageRetentionPeriod: 1209600 # 14 days
+
+    StandardQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-${self:provider.stage}-standard
+        VisibilityTimeout: 30
+        RedrivePolicy:
+          deadLetterTargetArn: !GetAtt StandardDLQ.Arn
+          maxReceiveCount: 5
+
+    StandardDLQ:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-${self:provider.stage}-standard-dlq
+        MessageRetentionPeriod: 1209600
+
+    # CloudFront distribution in front of the HTTP API, so read-heavy
+    # routes (e.g. GET /api/regions) are served from the edge during a
+    # spike instead of invoking Lambda on every request.
+    EdgeDistribution:
+      Type: AWS::CloudFront::Distribution
+      Properties:
+        DistributionConfig:
+          Enabled: true
+          DefaultCacheBehavior:
+            TargetOriginId: httpApiOrigin
+            ViewerProtocolPolicy: redirect-to-https
+            CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6 # AWS Managed-CachingOptimized
+          Origins:
+            - Id: httpApiOrigin
+              DomainName: !Sub '${HttpApi}.execute-api.${AWS::Region}.amazonaws.com'
+              CustomOriginConfig:
+                OriginProtocolPolicy: https-only
+
+plugins:
+  - serverless-offline # lets you run `serverless offline` for local testing too
+
+custom:
+  serverless-offline:
+    httpPort: 4001

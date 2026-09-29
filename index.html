@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Relief Broker — Ops Dashboard</title>
+<link rel="stylesheet" href="style.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+</head>
+<body>
+  <header>
+    <div class="header-left">
+      <h1>Auto-Scaling Emergency Relief Request Broker</h1>
+      <p class="subtitle">Live ops view — API Gateway → SQS → Lambda pool → DynamoDB</p>
+    </div>
+    <div class="conn-status" id="connStatus">connecting…</div>
+  </header>
+
+  <section class="stat-grid">
+    <div class="stat-card">
+      <span class="stat-label">Queue depth</span>
+      <span class="stat-value" id="statQueueDepth">0</span>
+      <span class="stat-sub" id="statQueueLanes">critical 0 · standard 0</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-label">Active workers</span>
+      <span class="stat-value" id="statWorkers">0</span>
+      <span class="stat-sub" id="statWorkerRange">min 0 · max 0</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-label">Requests processed</span>
+      <span class="stat-value" id="statProcessed">0</span>
+      <span class="stat-sub" id="statFailed">0 failed</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-label">Avg. processing time</span>
+      <span class="stat-value" id="statLatency">0 ms</span>
+      <span class="stat-sub" id="statScaleEvents">0 scale-out · 0 scale-in</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-label">CDN edge cache</span>
+      <span class="stat-value" id="statCdnRatio">0%</span>
+      <span class="stat-sub" id="statCdnCounts">0 hits · 0 misses</span>
+    </div>
+  </section>
+
+  <section class="chart-grid">
+    <div class="chart-card">
+      <h2>Queue depth vs active workers</h2>
+      <canvas id="scalingChart"></canvas>
+    </div>
+    <div class="chart-card">
+      <h2>Requests by priority lane</h2>
+      <canvas id="priorityChart"></canvas>
+    </div>
+  </section>
+
+  <section class="feed-grid">
+    <div class="feed-card">
+      <h2>Live request feed</h2>
+      <ul id="requestFeed" class="feed-list"></ul>
+    </div>
+    <div class="feed-card">
+      <h2>Scaling events</h2>
+      <ul id="scaleFeed" class="feed-list"></ul>
+    </div>
+  </section>
+
+  <footer>
+    <p>Regions: <span id="regionList">loading…</span></p>
+  </footer>
+
+  <script src="dashboard.js"></script>
+</body>
+</html>

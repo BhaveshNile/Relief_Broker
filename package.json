@@ -1,0 +1,22 @@
+{
+  "name": "relief-broker",
+  "version": "1.0.0",
+  "description": "Auto-Scaling Serverless Emergency Relief Request Broker - a local simulation of a serverless disaster-response request pipeline (API Gateway, Lambda, SQS, DynamoDB, CloudFront, Auto Scaling)",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "loadtest:normal": "node loadgen/simulateTraffic.js normal",
+    "loadtest:disaster": "node loadgen/simulateTraffic.js disaster"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "ws": "^8.17.0",
+    "cors": "^2.8.5",
+    "uuid": "^9.0.1"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
